@@ -2,12 +2,12 @@
 
 **A real-time multiplayer Snake game built from the ground up with Python, Pygame, TCP sockets, multithreading, and a custom application-layer protocol.**
 
-Snake Royale turns the classic Snake game into a networked 1v1 multiplayer experience with live matchmaking, synchronized gameplay, spectators, private chat, player customization, and server-authoritative game logic.
+Snake Royale transforms the classic Snake game into a networked 1v1 multiplayer experience with live matchmaking, synchronized gameplay, spectators, private chat, player customization, and server-authoritative game logic.
 
 The project explores the engineering behind real-time networked applications: **TCP message framing, concurrent connections, state synchronization, client-server architecture, game-loop design, and failure handling.**
 
 <p align="center">
-  <img src="assets/gameplay.png" alt="Snake Royale multiplayer gameplay" width="850">
+  <img src="docs/images/gameplay.png" alt="Snake Royale multiplayer gameplay" width="850">
 </p>
 
 ---
@@ -52,38 +52,13 @@ The project explores the engineering behind real-time networked applications: **
 * Customization synchronized through the server
 * Color changes reflected in the lobby and active game state
 
-### 🍰 Game Mechanics
+### 👑 Power-Up Mechanics
 
-* Health system rather than instant death
-* Walls, obstacles, self-collisions, and player collisions
-* Collision rollback to the last valid position
-* Food collection and health rewards
-* Periodic power pies
-* Temporary **crown advantage** affecting player collisions
-* Automatic spawning only on unoccupied board positions
-
----
-
-## 📸 Screenshots
-
-<table>
-  <tr>
-    <td align="center"><b>Multiplayer Lobby</b></td>
-    <td align="center"><b>Live Match</b></td>
-  </tr>
-  <tr>
-    <td><img src="assets/lobby.png" alt="Snake Royale lobby" width="440"></td>
-    <td><img src="assets/gameplay.png" alt="Snake Royale gameplay" width="440"></td>
-  </tr>
-  <tr>
-    <td align="center"><b>Player Customization</b></td>
-    <td align="center"><b>Spectator Mode</b></td>
-  </tr>
-  <tr>
-    <td><img src="assets/customization.png" alt="Snake customization" width="440"></td>
-    <td><img src="assets/spectator.png" alt="Snake Royale spectator mode" width="440"></td>
-  </tr>
-</table>
+* Regular food restores health
+* Special power pies appear periodically
+* Collecting a power pie grants a temporary crown advantage
+* Crown status changes player-collision behavior
+* Power-ups spawn only on unoccupied tiles
 
 ---
 
@@ -117,10 +92,10 @@ A player therefore does not directly update their snake's position. Instead:
 3. The server validates and stores the requested direction.
 4. The authoritative game loop advances the simulation.
 5. The resulting game state is serialized.
-6. The server broadcasts the new state to both players and all spectators.
+6. The server broadcasts the new state to both players and spectators.
 7. Each client renders the state locally.
 
-This prevents individual clients from independently deciding the outcome of the simulation.
+This keeps every connected client synchronized around a single source of truth.
 
 ---
 
@@ -147,11 +122,11 @@ The sender:
 4. Packs that length into a **4-byte unsigned integer in network byte order**.
 5. Sends the header and payload together.
 
-The receiver first reads exactly four bytes to determine the message length, then continues reading until the entire payload has arrived.
+The receiver first reads exactly four bytes to determine the message length, then continues reading until the full payload has arrived.
 
-This correctly handles cases where TCP splits a logical message across multiple packets or socket reads.
+This handles cases where TCP splits a logical application message across multiple socket reads.
 
-Example application message:
+Example:
 
 ```json
 {
@@ -163,8 +138,6 @@ Example application message:
 ```
 
 ### Protocol Message Types
-
-The application protocol supports events including:
 
 ```text
 REGISTER
@@ -196,7 +169,7 @@ INFO
 ERROR
 ```
 
-Keeping message definitions in a dedicated protocol layer separates network transport from application logic.
+Keeping protocol definitions separate from the rest of the application makes the networking layer easier to reason about and extend.
 
 ---
 
@@ -248,8 +221,6 @@ The simulation runs at a fixed:
 5 ticks / second
 ```
 
-The server uses a monotonic high-resolution timer to schedule ticks and compensate for execution time between iterations.
-
 At every tick, the server:
 
 ```text
@@ -274,15 +245,15 @@ Serialize authoritative state
 Broadcast GAME_STATE
 ```
 
-The client renders independently at a higher frame rate while gameplay decisions remain controlled by the server.
+The client renders independently at a higher frame rate, while gameplay outcomes remain controlled by the server.
 
 ---
 
 ## 💥 Collision System
 
-Snake Royale uses a more involved collision model than traditional instant-death Snake.
+Snake Royale uses a health-based collision model rather than traditional instant-death Snake.
 
-The game distinguishes between:
+The engine distinguishes between:
 
 * board boundaries
 * obstacles
@@ -291,8 +262,6 @@ The game distinguishes between:
 * simultaneous head-to-head collisions
 
 For recoverable collisions, the server stores each snake's **last safe body state**.
-
-If a snake hits a wall or obstacle:
 
 ```text
 Invalid next position
@@ -304,27 +273,29 @@ Apply collision damage
 Continue match if health > 0
 ```
 
-This avoids leaving the authoritative game state in an invalid position while supporting health-based gameplay.
+This prevents the game state from being left in an invalid position while still supporting health-based gameplay.
 
-Simultaneous movement for both snakes is calculated before either player's final position is committed, allowing head-to-head interactions to be handled consistently.
+Both snakes' next positions are calculated before either movement is committed, allowing simultaneous interactions to be resolved consistently.
 
 ---
 
 ## 👑 Power-Pie Mechanic
 
-Normal pies restore health.
+After a configured number of normal pies, the game spawns a special **power pie**.
 
-After a configured number of regular pies, a **power pie** is spawned.
+Collecting it grants the player a temporary crown advantage.
 
-Collecting it grants the player the crown temporarily. During that period, collision behavior changes in favor of the crowned snake.
+<p align="center">
+  <img src="docs/images/crown-powerup.png" alt="Snake Royale crown power-up mechanic" width="500">
+</p>
 
-The effect expires after additional pies have been consumed, returning the match to its normal collision rules.
+While crowned, the snake receives an advantage during player collisions. The effect expires after additional pies have been consumed.
 
-Pie spawning checks the current game state and selects only from unoccupied board positions, avoiding:
+Power-up and food spawning checks the current board state and selects only unoccupied locations, avoiding:
 
 * snakes
 * obstacles
-* existing pies
+* existing food
 
 ---
 
@@ -357,7 +328,25 @@ The network client maintains a background receive thread so blocking socket read
 
 Incoming network messages are placed into a queue and processed by the main client loop, keeping network I/O separate from UI rendering and event handling.
 
-The application also uses a centralized screen manager and shared client state to coordinate transitions between connection, lobby, gameplay, spectating, and result screens.
+---
+
+## 💬 Player Communication
+
+Snake Royale also includes direct communication between connected users.
+
+<p align="center">
+  <img src="docs/images/chat.png" alt="Snake Royale private chat" width="650">
+</p>
+
+The chat system supports:
+
+* direct player-to-player messaging
+* conversation history
+* unread-message tracking
+* temporary notifications
+* server-side message routing and validation
+
+This communication uses the same application protocol as gameplay and matchmaking events.
 
 ---
 
@@ -383,7 +372,7 @@ sequenceDiagram
     S-->>B: GAME_START
 
     V->>S: SPECTATE_REQUEST
-    S-->>V: GAME_START (SPECTATOR)
+    S-->>V: GAME_START
 
     loop Fixed-rate server ticks
         A->>S: INPUT
@@ -403,25 +392,23 @@ sequenceDiagram
 
 ## 🛡️ Connection & Failure Handling
 
-The networking layer includes several safeguards for real-world socket behavior:
+The networking layer includes safeguards for real-world socket behavior:
 
-* `TCP_NODELAY` minimizes latency from TCP's Nagle algorithm.
-* `SO_KEEPALIVE` enables detection of broken connections.
-* `SO_REUSEADDR` makes restarting the server easier.
-* Failed sends are caught without crashing the entire server.
-* Partial TCP reads are reconstructed by the protocol layer.
-* Duplicate usernames are rejected.
-* Clients must register before other commands are accepted.
-* Invalid or unknown messages receive server-side errors.
-* Disconnected players are removed from server state.
-* Pending challenges involving disconnected users are cleared.
-* If a player disconnects during a match, the opponent is declared the winner and spectators are returned to idle state.
+* `TCP_NODELAY` minimizes latency from TCP's Nagle algorithm
+* `SO_KEEPALIVE` helps detect broken connections
+* `SO_REUSEADDR` simplifies server restarts
+* failed sends are caught without terminating the full server
+* partial TCP reads are reconstructed by the protocol layer
+* duplicate usernames are rejected
+* clients must register before other commands are accepted
+* invalid or unknown messages receive server-side errors
+* disconnected players are removed from server state
+* pending challenges involving disconnected users are cleared
+* if a player disconnects during a match, the opponent is declared the winner
 
 ---
 
 ## 🧠 Engineering Highlights
-
-This project was designed around several systems-programming concepts:
 
 **Application-layer protocol design**
 A custom length-prefixed JSON protocol provides reliable message framing over TCP.
@@ -439,7 +426,7 @@ Game outcomes are determined by one server simulation rather than independently 
 The latest authoritative game state is continuously serialized and broadcast to all relevant clients.
 
 **Separation of concerns**
-Protocol handling, network transport, simulation, client state, UI components, and screen management are separated into distinct modules.
+Protocol handling, transport, simulation, client state, UI components, and screen management are separated into distinct modules.
 
 **Failure handling**
 Disconnects, invalid requests, duplicate usernames, failed sends, and interrupted TCP messages are handled without requiring the entire application to terminate.
@@ -448,15 +435,15 @@ Disconnects, invalid requests, duplicate usernames, failed sends, and interrupte
 
 ## 🧰 Tech Stack
 
-| Technology                 | Purpose                                              |
-| -------------------------- | ---------------------------------------------------- |
-| **Python**                 | Core application and server logic                    |
-| **Pygame**                 | Rendering, UI, input, and audio                      |
-| **TCP/IP sockets**         | Reliable client-server communication                 |
-| **Python ****`threading`** | Concurrent connection handling and network receiving |
-| **JSON**                   | Application-message serialization                    |
-| **`struct`**               | Binary 4-byte message-length headers                 |
-| **Dataclasses**            | Structured game-domain models                        |
+| Technology             | Purpose                                              |
+| ---------------------- | ---------------------------------------------------- |
+| **Python**             | Core application and server logic                    |
+| **Pygame**             | Rendering, UI, input, and audio                      |
+| **TCP/IP sockets**     | Reliable client-server communication                 |
+| **Python `threading`** | Concurrent connection handling and network receiving |
+| **JSON**               | Application-message serialization                    |
+| **`struct`**           | Binary 4-byte message-length headers                 |
+| **Dataclasses**        | Structured game-domain models                        |
 
 ---
 
@@ -465,13 +452,13 @@ Disconnects, invalid requests, duplicate usernames, failed sends, and interrupte
 ```text
 snake-royale/
 │
-├── server.py               # TCP server, matchmaking, game loop and clients
+├── server.py               # TCP server, matchmaking and game coordination
 ├── client.py               # Pygame client and application loop
 ├── network.py              # Client-side networking abstraction
 ├── protocol.py             # TCP message framing and protocol definitions
 │
 ├── game_engine.py          # Authoritative gameplay simulation
-├── models.py               # Game-domain dataclasses
+├── models.py               # Game-domain models
 ├── constants.py            # Gameplay constants
 ├── client_state.py         # Shared client-side state
 │
@@ -490,7 +477,14 @@ snake-royale/
 ├── art.py                  # Shared visual rendering
 ├── config.py               # Client display configuration
 │
-├── assets/                 # Game assets
+├── assets/                 # Runtime game assets
+│
+├── docs/
+│   └── images/
+│       ├── gameplay.png
+│       ├── crown-powerup.png
+│       └── chat.png
+│
 ├── requirements.txt
 └── README.md
 ```
@@ -518,12 +512,6 @@ cd snake-royale
 pip install -r requirements.txt
 ```
 
-The only external Python dependency is:
-
-```text
-pygame
-```
-
 ### 3. Start the server
 
 Choose an available TCP port, for example `5555`:
@@ -532,13 +520,13 @@ Choose an available TCP port, for example `5555`:
 python server.py 5555
 ```
 
-The server prints connection information similar to:
+For clients running on the same computer, use:
 
 ```text
-Server listening on port: 5555
-The laptop running the server should connect to: 127.0.0.1
-Other laptops on the same network should connect to: <LAN-IP>
+127.0.0.1
 ```
+
+Other devices on the same local network can connect using the server machine's LAN IP.
 
 ### 4. Start a client
 
@@ -548,28 +536,17 @@ Open another terminal:
 python client.py
 ```
 
-For a client running on the **same machine** as the server, connect to:
-
-```text
-Host: 127.0.0.1
-Port: 5555
-```
-
-For another computer on the **same local network**, use the LAN IP printed by the server.
-
 ### 5. Start additional clients
 
-Run:
+Run additional client instances:
 
 ```bash
 python client.py
 ```
 
-again in separate terminals or on other devices.
+Choose unique usernames, challenge another available player from the lobby, and begin the match.
 
-Choose unique usernames, challenge another available player from the lobby, and start the match.
-
-Other connected users can spectate the active game.
+Additional connected users can spectate the active game.
 
 ---
 
@@ -586,19 +563,13 @@ Other connected users can spectate the active game.
 | Starting snake length |                   3 |
 | Power pie interval    | After 5 normal pies |
 
-### Controls
-
-Use the directional controls during a match to steer your snake.
-
-The server rejects invalid direction changes such as immediately reversing into the snake's own body.
-
 ### Winning
 
 A match ends when:
 
-* one player's health reaches zero,
-* both players reach zero health simultaneously, resulting in a draw, or
-* the 120-second match timer expires.
+* one player's health reaches zero
+* both players reach zero health simultaneously, resulting in a draw
+* the match timer expires
 
 If time expires, the player with more remaining health wins. Equal health results in a draw.
 
@@ -614,7 +585,6 @@ Potential future extensions include:
 * Match rooms
 * Persistent player accounts
 * Leaderboards and statistics
-* Server discovery
 * Authentication
 * Automated networking and game-engine tests
 * Client-side interpolation for smoother high-latency gameplay
@@ -633,12 +603,22 @@ Key areas included:
 * Server-side multiplayer coordination
 * Concurrent client handling
 * Lobby and multiplayer communication flows
-* Synchronization between clients and authoritative server state
+* Synchronization between clients and the authoritative server state
 
-Working on Snake Royale provided hands-on experience with networking concepts beyond calling an existing API: defining how clients communicate, handling TCP as a byte stream, coordinating concurrent connections, and keeping multiple clients synchronized around a single authoritative source of truth.
+Working on Snake Royale provided hands-on experience with networking concepts beyond simply consuming an existing API: defining how clients communicate, handling TCP as a byte stream, coordinating concurrent connections, and keeping multiple clients synchronized around a single authoritative source of truth.
 
 ---
 
-## 📄 License
+## 📚 What I Learned
 
-This project was developed as a software engineering project and is provided for educational and portfolio purposes.
+Building Snake Royale required combining networking, concurrency, software architecture, and application development into one working system.
+
+Key lessons included:
+
+* TCP is a byte stream, so application protocols must define their own message boundaries
+* network reads cannot assume an entire message arrives in one operation
+* real-time multiplayer systems need a clear source of truth
+* networking work should not block the UI thread
+* concurrent access to shared state requires synchronization
+* disconnect handling is part of normal application flow
+* separating transport, protocol, game logic, and presentation makes networked applications easier to reason about
